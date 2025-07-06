@@ -1,0 +1,12 @@
+streamlit
+pandas
+schedule
+opencv-python
+numpy
+pillow
+plotly
+openpyxl
+pytesseract
+requests
+python-dateutil
+psutil

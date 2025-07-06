@@ -897,6 +897,234 @@ class CoordinateDetector:
             self.logger.error(f"Error in text detection: {e}")
             return None
 
+class InstagramBot:
+    """Bot principal que orquestra todas as operações"""
+    
+    def __init__(self, db_instance, device_id: Optional[str] = None):
+        self.db = db_instance
+        self.adb = ADBController(device_id)
+        self.instagram = None
+        self.logger = logging.getLogger(__name__)
+        
+        # Configurações básicas
+        self.max_follows_per_day = 50
+        self.max_unfollows_per_day = 25
+        self.follows_per_batch = 5
+        self.follow_interval_minutes = 5
+        self.min_delay = 30
+        self.max_delay = 120
+    
+    def initialize(self) -> bool:
+        """Inicializa o bot e conecta ao dispositivo"""
+        try:
+            if not self.adb.connect_device():
+                self.logger.error("Failed to connect to Android device")
+                return False
+            
+            self.instagram = InstagramAutomation(self.adb, self.db)
+            
+            # Iniciar Instagram
+            result = self.instagram.start_instagram()
+            if not result.success:
+                self.logger.error(f"Failed to start Instagram: {result.message}")
+                return False
+            
+            self.logger.info("Bot initialized successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error initializing bot: {e}")
+            return False
+    
+    def execute_follow_batch(self) -> Dict[str, int]:
+        """Executa um lote de follows"""
+        stats = {'success': 0, 'failed': 0, 'skipped': 0}
+        
+        # Obter seguidores para seguir
+        followers_to_follow = self.db.get_followers_to_follow(self.follows_per_batch)
+        
+        if not followers_to_follow:
+            self.logger.info("No followers to follow")
+            return stats
+        
+        for follower in followers_to_follow:
+            try:
+                follower_id = follower['id']
+                username = follower['username']
+                
+                self.logger.info(f"Attempting to follow: {username}")
+                
+                # Registrar ação como pendente
+                action_id = self.db.record_action(follower_id, 'follow', 'pending')
+                
+                # Buscar usuário
+                search_result = self.instagram.search_user(username)
+                if not search_result.success:
+                    self.db.update_action_status(action_id, 'failed', search_result.message)
+                    stats['failed'] += 1
+                    continue
+                
+                # Seguir usuário
+                follow_result = self.instagram.follow_user()
+                if follow_result.success:
+                    self.db.update_action_status(action_id, 'completed')
+                    self.db.schedule_follow_back_check(follower_id, datetime.now())
+                    stats['success'] += 1
+                    self.logger.info(f"Successfully followed: {username}")
+                else:
+                    self.db.update_action_status(action_id, 'failed', follow_result.message)
+                    stats['failed'] += 1
+                
+                # Delay entre ações
+                delay = random.randint(self.min_delay, self.max_delay)
+                time.sleep(delay)
+                
+            except Exception as e:
+                self.logger.error(f"Error processing follower {username}: {e}")
+                stats['failed'] += 1
+                continue
+        
+        return stats
+    
+    def check_follow_backs(self) -> Dict[str, int]:
+        """Verifica follow-backs pendentes"""
+        stats = {'checked': 0, 'following_back': 0, 'not_following_back': 0}
+        
+        follow_backs_to_check = self.db.get_follow_backs_to_check()
+        
+        for follow_back in follow_backs_to_check:
+            try:
+                username = follow_back['username']
+                follow_back_id = follow_back['id']
+                
+                self.logger.info(f"Checking follow-back for: {username}")
+                
+                check_result = self.instagram.check_if_following_back(username)
+                
+                if check_result.success:
+                    self.db.update_follow_back_status(follow_back_id, False)  # Assumir que não seguiu por enquanto
+                    stats['not_following_back'] += 1
+                    stats['checked'] += 1
+                    
+                time.sleep(random.randint(5, 10))
+                
+            except Exception as e:
+                self.logger.error(f"Error checking follow-back for {username}: {e}")
+                continue
+        
+        return stats
+    
+    def execute_unfollow_batch(self) -> Dict[str, int]:
+        """Executa unfollows para quem não seguiu de volta"""
+        stats = {'success': 0, 'failed': 0}
+        
+        # Obter usuários que não seguiram de volta
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT fb.follower_id, f.username
+            FROM follow_backs fb
+            JOIN followers f ON fb.follower_id = f.id
+            WHERE fb.followed_back = 0
+            AND fb.unfollowed_at IS NULL
+            LIMIT ?
+        ''', (self.max_unfollows_per_day,))
+        
+        users_to_unfollow = cursor.fetchall()
+        conn.close()
+        
+        for follower_id, username in users_to_unfollow:
+            try:
+                self.logger.info(f"Attempting to unfollow: {username}")
+                
+                action_id = self.db.record_action(follower_id, 'unfollow', 'pending')
+                
+                unfollow_result = self.instagram.unfollow_user(username)
+                
+                if unfollow_result.success:
+                    self.db.update_action_status(action_id, 'completed')
+                    
+                    # Marcar como unfollowed
+                    conn = sqlite3.connect(self.db.db_path)
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        UPDATE follow_backs 
+                        SET unfollowed_at = CURRENT_TIMESTAMP
+                        WHERE follower_id = ?
+                    ''', (follower_id,))
+                    conn.commit()
+                    conn.close()
+                    
+                    stats['success'] += 1
+                    self.logger.info(f"Successfully unfollowed: {username}")
+                else:
+                    self.db.update_action_status(action_id, 'failed', unfollow_result.message)
+                    stats['failed'] += 1
+                
+                delay = random.randint(self.min_delay, self.max_delay)
+                time.sleep(delay)
+                
+            except Exception as e:
+                self.logger.error(f"Error unfollowing {username}: {e}")
+                stats['failed'] += 1
+                continue
+        
+        return stats
+    
+    def run_automation_cycle(self) -> Dict[str, any]:
+        """Executa um ciclo completo de automação"""
+        cycle_stats = {
+            'started_at': datetime.now(),
+            'follow_stats': {},
+            'check_stats': {},
+            'unfollow_stats': {},
+            'completed_at': None,
+            'total_execution_time': 0
+        }
+        
+        start_time = time.time()
+        
+        try:
+            self.logger.info("Starting automation cycle")
+            
+            # 1. Executar follows
+            cycle_stats['follow_stats'] = self.execute_follow_batch()
+            
+            # 2. Verificar follow-backs
+            cycle_stats['check_stats'] = self.check_follow_backs()
+            
+            # 3. Executar unfollows
+            cycle_stats['unfollow_stats'] = self.execute_unfollow_batch()
+            
+            cycle_stats['completed_at'] = datetime.now()
+            cycle_stats['total_execution_time'] = time.time() - start_time
+            
+            self.logger.info(f"Automation cycle completed in {cycle_stats['total_execution_time']:.2f} seconds")
+            
+            self.db.log_message(
+                'INFO',
+                f"Automation cycle completed: {json.dumps(cycle_stats, default=str)}",
+                'InstagramBot',
+                'run_automation_cycle'
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error in automation cycle: {e}")
+            cycle_stats['error'] = str(e)
+            cycle_stats['completed_at'] = datetime.now()
+            cycle_stats['total_execution_time'] = time.time() - start_time
+            
+            self.db.log_message(
+                'ERROR',
+                f"Automation cycle failed: {str(e)}",
+                'InstagramBot',
+                'run_automation_cycle'
+            )
+        
+        return cycle_stats
+
 # Classe para análise de perfil
 class ProfileAnalyzer:
     """Analisador de perfis do Instagram"""

@@ -1,0 +1,14 @@
+{
+  "bot_settings": {
+    "follow_interval_minutes": 5,
+    "follows_per_batch": 5,
+    "max_daily_follows": 100,
+    "min_delay_seconds": 30,
+    "max_delay_seconds": 120
+  },
+  "safety_settings": {
+    "enable_human_simulation": true,
+    "coordinate_variance": 5,
+    "max_actions_per_hour": 20
+  }
+}

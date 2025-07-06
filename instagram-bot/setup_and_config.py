@@ -1,57 +1,180 @@
 #!/usr/bin/env python3
 """
-Instagram Bot Setup and Configuration Script
-Configura e instala todas as dependências necessárias para o bot do Instagram
+Instagram Bot - Installation Verification
+Verifica se tudo está instalado e configurado corretamente
 """
 
-import os
 import sys
+import os
 import subprocess
-import platform
-import json
-import shutil
+import importlib
 from pathlib import Path
-from typing import Dict, List, Optional
+import json
 
-class InstagramBotSetup:
-    """Classe para configuração inicial do bot"""
+class InstallationVerifier:
+    """Verificador de instalação do bot"""
     
     def __init__(self):
-        self.project_root = Path.cwd()
-        self.requirements_file = self.project_root / "requirements.txt"
-        self.config_file = self.project_root / "config.json"
-        self.templates_dir = self.project_root / "templates"
-        self.logs_dir = self.project_root / "logs"
-        self.exports_dir = self.project_root / "exports"
+        self.GREEN = '\033[92m'
+        self.RED = '\033[91m'
+        self.YELLOW = '\033[93m'
+        self.BLUE = '\033[94m'
+        self.ENDC = '\033[0m'
+        self.BOLD = '\033[1m'
         
-        # Detectar sistema operacional
-        self.os_type = platform.system().lower()
-        
+        self.results = {
+            'python': False,
+            'dependencies': {},
+            'files': {},
+            'adb': False,
+            'devices': [],
+            'instagram': False,
+            'overall_score': 0
+        }
+    
     def print_header(self):
-        """Imprime cabeçalho do setup"""
-        print("=" * 60)
-        print("🤖 INSTAGRAM AUTOMATION BOT - SETUP")
-        print("=" * 60)
-        print(f"Sistema operacional: {platform.system()}")
+        """Imprime cabeçalho"""
+        print("=" * 70)
+        print(f"{self.BOLD}🔍 VERIFICAÇÃO DE INSTALAÇÃO - INSTAGRAM BOT{self.ENDC}")
+        print("=" * 70)
         print(f"Python: {sys.version}")
-        print(f"Diretório do projeto: {self.project_root}")
-        print("=" * 60)
+        print(f"Sistema: {sys.platform}")
+        print("=" * 70)
     
-    def check_python_version(self) -> bool:
-        """Verifica se a versão do Python é compatível"""
-        print("🐍 Verificando versão do Python...")
+    def check_python_version(self):
+        """Verifica versão do Python"""
+        print(f"\n{self.BLUE}🐍 VERIFICANDO PYTHON{self.ENDC}")
+        print("-" * 30)
         
-        if sys.version_info < (3, 8):
-            print("❌ Python 3.8+ é necessário")
-            print(f"   Versão atual: {sys.version}")
+        version = sys.version_info
+        if version >= (3, 8):
+            print(f"{self.GREEN}✅ Python {version.major}.{version.minor}.{version.micro} - OK{self.ENDC}")
+            self.results['python'] = True
+            return True
+        else:
+            print(f"{self.RED}❌ Python {version.major}.{version.minor}.{version.micro} - Versão muito antiga{self.ENDC}")
+            print(f"   Requerido: Python 3.8+")
             return False
-        
-        print("✅ Versão do Python compatível")
-        return True
     
-    def check_adb_installation(self) -> bool:
-        """Verifica se ADB está instalado"""
-        print("📱 Verificando instalação do ADB...")
+    def check_dependencies(self):
+        """Verifica dependências Python"""
+        print(f"\n{self.BLUE}📦 VERIFICANDO DEPENDÊNCIAS{self.ENDC}")
+        print("-" * 40)
+        
+        # Dependências obrigatórias
+        required_deps = {
+            'streamlit': 'Interface web',
+            'pandas': 'Manipulação de dados', 
+            'numpy': 'Computação numérica',
+            'schedule': 'Agendamento de tarefas',
+            'requests': 'Requisições HTTP',
+            'openpyxl': 'Leitura de Excel',
+            'plotly': 'Gráficos interativos'
+        }
+        
+        # Dependências de visão computacional
+        cv_deps = {
+            'cv2': 'OpenCV - Visão computacional',
+            'PIL': 'Pillow - Processamento de imagens'
+        }
+        
+        # Dependências opcionais
+        optional_deps = {
+            'pytesseract': 'OCR - Reconhecimento de texto',
+            'psutil': 'Monitoramento do sistema',
+            'colorlog': 'Logs coloridos'
+        }
+        
+        all_deps = {**required_deps, **cv_deps, **optional_deps}
+        installed_count = 0
+        
+        for module, description in all_deps.items():
+            try:
+                if module == 'cv2':
+                    import cv2
+                    version = cv2.__version__
+                elif module == 'PIL':
+                    from PIL import Image
+                    version = Image.__version__ if hasattr(Image, '__version__') else 'N/A'
+                else:
+                    mod = importlib.import_module(module)
+                    version = getattr(mod, '__version__', 'N/A')
+                
+                print(f"{self.GREEN}✅ {module:15} {version:10} - {description}{self.ENDC}")
+                self.results['dependencies'][module] = True
+                installed_count += 1
+                
+            except ImportError:
+                is_optional = module in optional_deps
+                color = self.YELLOW if is_optional else self.RED
+                status = "⚠️ Opcional" if is_optional else "❌ Obrigatório"
+                print(f"{color}{status:12} {module:15} {'':10} - {description}{self.ENDC}")
+                self.results['dependencies'][module] = False
+        
+        success_rate = (installed_count / len(all_deps)) * 100
+        print(f"\n📊 Taxa de instalação: {success_rate:.1f}% ({installed_count}/{len(all_deps)})")
+        
+        return success_rate >= 70  # 70% das dependências instaladas
+    
+    def check_project_files(self):
+        """Verifica arquivos do projeto"""
+        print(f"\n{self.BLUE}📁 VERIFICANDO ARQUIVOS DO PROJETO{self.ENDC}")
+        print("-" * 45)
+        
+        required_files = {
+            'improved_db_schema.py': 'Módulo de banco de dados',
+            'instagram_automation.py': 'Módulo de automação',
+            'scheduler_system.py': 'Sistema de agendamento', 
+            'improved_streamlit_app.py': 'Interface web',
+            'requirements.txt': 'Lista de dependências'
+        }
+        
+        optional_files = {
+            'setup_and_config.py': 'Script de configuração',
+            'test_all_modules.py': 'Suite de testes',
+            'quick_start.py': 'Script de início rápido',
+            'config.json': 'Arquivo de configuração'
+        }
+        
+        all_files = {**required_files, **optional_files}
+        found_count = 0
+        
+        for filename, description in all_files.items():
+            path = Path(filename)
+            if path.exists():
+                size = path.stat().st_size
+                size_str = f"({size:,} bytes)"
+                print(f"{self.GREEN}✅ {filename:25} {size_str:15} - {description}{self.ENDC}")
+                self.results['files'][filename] = True
+                found_count += 1
+            else:
+                is_optional = filename in optional_files
+                color = self.YELLOW if is_optional else self.RED
+                status = "⚠️ Opcional" if is_optional else "❌ Obrigatório"
+                print(f"{color}{status:12} {filename:25} {'':15} - {description}{self.ENDC}")
+                self.results['files'][filename] = False
+        
+        # Verificar diretórios
+        print(f"\n📂 Diretórios:")
+        directories = ['templates', 'logs', 'exports', 'data', 'screenshots']
+        
+        for dirname in directories:
+            path = Path(dirname)
+            if path.exists() and path.is_dir():
+                file_count = len(list(path.iterdir()))
+                print(f"{self.GREEN}✅ {dirname:15} ({file_count} arquivos){self.ENDC}")
+            else:
+                print(f"{self.YELLOW}⚠️ {dirname:15} (será criado automaticamente){self.ENDC}")
+        
+        success_rate = (found_count / len(all_files)) * 100
+        print(f"\n📊 Arquivos encontrados: {success_rate:.1f}% ({found_count}/{len(all_files)})")
+        
+        return len([f for f in required_files if self.results['files'].get(f, False)]) == len(required_files)
+    
+    def check_adb(self):
+        """Verifica ADB"""
+        print(f"\n{self.BLUE}📱 VERIFICANDO ADB{self.ENDC}")
+        print("-" * 25)
         
         try:
             result = subprocess.run(['adb', 'version'], 
@@ -60,251 +183,31 @@ class InstagramBotSetup:
                                   timeout=10)
             
             if result.returncode == 0:
-                print("✅ ADB encontrado")
-                print(f"   Versão: {result.stdout.split()[4]}")
+                version_line = result.stdout.split('\n')[0]
+                print(f"{self.GREEN}✅ ADB instalado: {version_line}{self.ENDC}")
+                self.results['adb'] = True
                 return True
             else:
-                print("❌ ADB não funciona corretamente")
+                print(f"{self.RED}❌ ADB não funciona corretamente{self.ENDC}")
+                print(f"   Erro: {result.stderr}")
                 return False
                 
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            print("❌ ADB não encontrado")
-            self.show_adb_installation_instructions()
+        except subprocess.TimeoutExpired:
+            print(f"{self.RED}❌ ADB timeout{self.ENDC}")
+            return False
+        except FileNotFoundError:
+            print(f"{self.RED}❌ ADB não encontrado{self.ENDC}")
+            print(f"   Instale ADB primeiro")
             return False
     
-    def show_adb_installation_instructions(self):
-        """Mostra instruções para instalar ADB"""
-        print("\n📋 INSTRUÇÕES PARA INSTALAR ADB:")
+    def check_android_devices(self):
+        """Verifica dispositivos Android"""
+        print(f"\n{self.BLUE}📱 VERIFICANDO DISPOSITIVOS ANDROID{self.ENDC}")
         print("-" * 40)
         
-        if self.os_type == "windows":
-            print("Windows:")
-            print("1. Baixe Android SDK Platform Tools:")
-            print("   https://developer.android.com/studio/releases/platform-tools")
-            print("2. Extraia em C:\\adb")
-            print("3. Adicione C:\\adb ao PATH do sistema")
-            print("4. Ou instale via Chocolatey: choco install adb")
-            
-        elif self.os_type == "darwin":  # macOS
-            print("macOS:")
-            print("1. Instale via Homebrew: brew install android-platform-tools")
-            print("2. Ou baixe manualmente do link acima")
-            
-        elif self.os_type == "linux":
-            print("Linux:")
-            print("Ubuntu/Debian: sudo apt install android-tools-adb")
-            print("Fedora: sudo dnf install android-tools")
-            print("Arch: sudo pacman -S android-tools")
-            
-        print("\n⚠️  Depois de instalar, reinicie o terminal e execute o setup novamente")
-    
-    def create_requirements_file(self):
-        """Cria arquivo requirements.txt"""
-        print("📦 Criando arquivo requirements.txt...")
-        
-        requirements = [
-            "streamlit>=1.25.0",
-            "pandas>=1.5.0",
-            "sqlite3",  # Parte da stdlib do Python
-            "schedule>=1.2.0",
-            "opencv-python>=4.8.0",
-            "numpy>=1.24.0",
-            "pillow>=10.0.0",
-            "plotly>=5.15.0",
-            "openpyxl>=3.1.0",
-            "pytesseract>=0.3.10",  # Opcional para OCR
-            "requests>=2.31.0",
-            "python-dateutil>=2.8.0",
-            "psutil>=5.9.0",  # Para monitoramento do sistema
-        ]
-        
-        with open(self.requirements_file, 'w') as f:
-            for req in requirements:
-                f.write(f"{req}\n")
-        
-        print(f"✅ Arquivo criado: {self.requirements_file}")
-    
-    def install_dependencies(self) -> bool:
-        """Instala dependências Python"""
-        print("📦 Instalando dependências Python...")
-        
-        try:
-            # Atualizar pip primeiro
-            subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'], 
-                         check=True)
-            
-            # Instalar dependências
-            subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', str(self.requirements_file)], 
-                         check=True)
-            
-            print("✅ Dependências instaladas com sucesso")
-            return True
-            
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Erro ao instalar dependências: {e}")
+        if not self.results['adb']:
+            print(f"{self.YELLOW}⚠️ ADB não disponível, pulando verificação de dispositivos{self.ENDC}")
             return False
-    
-    def create_directory_structure(self):
-        """Cria estrutura de diretórios"""
-        print("📁 Criando estrutura de diretórios...")
-        
-        directories = [
-            self.templates_dir,
-            self.logs_dir,
-            self.exports_dir,
-            self.project_root / "screenshots",
-            self.project_root / "data",
-            self.project_root / "configs"
-        ]
-        
-        for directory in directories:
-            directory.mkdir(exist_ok=True)
-            print(f"   📁 {directory}")
-        
-        print("✅ Estrutura de diretórios criada")
-    
-    def create_config_file(self):
-        """Cria arquivo de configuração"""
-        print("⚙️ Criando arquivo de configuração...")
-        
-        config = {
-            "bot_settings": {
-                "follow_interval_minutes": 5,
-                "follows_per_batch": 5,
-                "follow_back_check_hours": 24,
-                "max_daily_follows": 100,
-                "max_daily_unfollows": 50,
-                "min_delay_seconds": 30,
-                "max_delay_seconds": 120
-            },
-            "device_settings": {
-                "device_id": "",
-                "instagram_package": "com.instagram.android",
-                "screen_timeout": 30
-            },
-            "safety_settings": {
-                "enable_human_simulation": True,
-                "random_delays": True,
-                "coordinate_variance": 5,
-                "max_actions_per_hour": 20
-            },
-            "logging": {
-                "level": "INFO",
-                "max_log_files": 10,
-                "max_log_size_mb": 50
-            },
-            "database": {
-                "path": "instagram_automation.db",
-                "backup_interval_hours": 24
-            }
-        }
-        
-        with open(self.config_file, 'w') as f:
-            json.dump(config, f, indent=4)
-        
-        print(f"✅ Arquivo criado: {self.config_file}")
-    
-    def create_template_images(self):
-        """Cria templates de exemplo para detecção de botões"""
-        print("🖼️ Criando templates de exemplo...")
-        
-        template_info = {
-            "follow_button.png": "Botão 'Seguir' do Instagram",
-            "following_button.png": "Botão 'Seguindo' do Instagram", 
-            "search_icon.png": "Ícone de busca",
-            "home_icon.png": "Ícone da tela inicial",
-            "profile_icon.png": "Ícone do perfil"
-        }
-        
-        readme_content = """# Templates para Detecção de Botões
-
-Esta pasta deve conter screenshots dos botões do Instagram para detecção automática.
-
-## Como criar templates:
-
-1. Abra o Instagram no seu dispositivo
-2. Navegue até o botão desejado
-3. Tire um screenshot
-4. Recorte apenas o botão (deve ter fundo transparente se possível)
-5. Salve como PNG nesta pasta
-
-## Templates necessários:
-
-"""
-        
-        for template, description in template_info.items():
-            readme_content += f"- `{template}`: {description}\n"
-        
-        readme_content += """
-## Dicas:
-
-- Use resolução do seu dispositivo
-- Botões devem estar bem definidos
-- Evite incluir texto que pode mudar
-- Teste diferentes estados (claro/escuro)
-"""
-        
-        with open(self.templates_dir / "README.md", 'w') as f:
-            f.write(readme_content)
-        
-        print(f"✅ README criado em: {self.templates_dir}")
-    
-    def create_startup_scripts(self):
-        """Cria scripts de inicialização"""
-        print("🚀 Criando scripts de inicialização...")
-        
-        # Script para Windows
-        if self.os_type == "windows":
-            bat_content = """@echo off
-echo Starting Instagram Bot...
-python scheduler_system.py --mode cli
-pause
-"""
-            with open(self.project_root / "start_bot.bat", 'w') as f:
-                f.write(bat_content)
-        
-        # Script para Unix (Linux/macOS)
-        sh_content = """#!/bin/bash
-echo "Starting Instagram Bot..."
-python3 scheduler_system.py --mode cli
-"""
-        with open(self.project_root / "start_bot.sh", 'w') as f:
-            f.write(sh_content)
-        
-        # Tornar executável no Unix
-        if self.os_type in ["linux", "darwin"]:
-            os.chmod(self.project_root / "start_bot.sh", 0o755)
-        
-        print("✅ Scripts de inicialização criados")
-    
-    def create_example_files(self):
-        """Cria arquivos de exemplo"""
-        print("📄 Criando arquivos de exemplo...")
-        
-        # Exemplo de Excel
-        example_excel_content = """# Exemplo de estrutura do arquivo Excel
-
-O arquivo Excel deve ter:
-- Nome da planilha: 'contacts'
-- Colunas obrigatórias:
-  - Username: nome de usuário no Instagram (sem @)
-  - Profile link: link do perfil completo
-
-Exemplo:
-| Username | Profile link |
-|----------|-------------|
-| joaosilva | https://instagram.com/joaosilva |
-| mariasantos | https://instagram.com/mariasantos |
-"""
-        
-        with open(self.project_root / "exemplo_excel.md", 'w') as f:
-            f.write(example_excel_content)
-        
-        print("✅ Arquivos de exemplo criados")
-    
-    def check_android_device(self) -> bool:
-        """Verifica se há dispositivo Android conectado"""
-        print("📱 Verificando dispositivos Android...")
         
         try:
             result = subprocess.run(['adb', 'devices'], 
@@ -314,87 +217,213 @@ Exemplo:
             
             if result.returncode == 0:
                 lines = result.stdout.strip().split('\n')
-                devices = [line for line in lines[1:] if line.strip() and 'device' in line]
+                devices = []
+                
+                for line in lines[1:]:  # Pular cabeçalho
+                    if line.strip() and '\t' in line:
+                        device_id, status = line.split('\t')
+                        devices.append((device_id, status))
                 
                 if devices:
-                    print(f"✅ {len(devices)} dispositivo(s) encontrado(s):")
-                    for device in devices:
-                        device_id = device.split('\t')[0]
-                        print(f"   📱 {device_id}")
+                    print(f"{self.GREEN}✅ {len(devices)} dispositivo(s) encontrado(s):{self.ENDC}")
+                    for device_id, status in devices:
+                        status_color = self.GREEN if status == 'device' else self.YELLOW
+                        print(f"   {status_color}📱 {device_id} ({status}){self.ENDC}")
+                        self.results['devices'].append(device_id)
                     return True
                 else:
-                    print("⚠️ Nenhum dispositivo encontrado")
-                    self.show_device_connection_instructions()
+                    print(f"{self.YELLOW}⚠️ Nenhum dispositivo conectado{self.ENDC}")
                     return False
             else:
-                print("❌ Erro ao listar dispositivos")
+                print(f"{self.RED}❌ Erro ao listar dispositivos{self.ENDC}")
                 return False
                 
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            print("❌ Não foi possível verificar dispositivos")
+        except Exception as e:
+            print(f"{self.RED}❌ Erro na verificação: {e}{self.ENDC}")
             return False
     
-    def show_device_connection_instructions(self):
-        """Mostra instruções para conectar dispositivo"""
-        print("\n📋 INSTRUÇÕES PARA CONECTAR DISPOSITIVO:")
-        print("-" * 45)
-        print("1. Ative 'Opções do desenvolvedor' no Android:")
-        print("   - Vá em Configurações > Sobre o telefone")
-        print("   - Toque 7 vezes em 'Número da versão'")
-        print("2. Ative 'Depuração USB' em Opções do desenvolvedor")
-        print("3. Conecte o dispositivo via USB")
-        print("4. Aceite a autorização de depuração USB")
-        print("5. Execute 'adb devices' para verificar")
-        print("\n📝 Para usar emulador:")
-        print("1. Instale Android Studio ou Bluestacks")
-        print("2. Inicie um emulador Android")
-        print("3. O emulador deve aparecer automaticamente")
-    
-    def test_instagram_access(self) -> bool:
-        """Testa acesso ao Instagram"""
-        print("📱 Testando acesso ao Instagram...")
+    def check_instagram(self):
+        """Verifica Instagram nos dispositivos"""
+        print(f"\n{self.BLUE}📱 VERIFICANDO INSTAGRAM{self.ENDC}")
+        print("-" * 30)
         
-        try:
-            # Verificar se Instagram está instalado
-            result = subprocess.run([
-                'adb', 'shell', 'pm', 'list', 'packages', 'com.instagram.android'
-            ], capture_output=True, text=True, timeout=10)
-            
-            if result.returncode == 0 and 'com.instagram.android' in result.stdout:
-                print("✅ Instagram encontrado no dispositivo")
+        if not self.results['devices']:
+            print(f"{self.YELLOW}⚠️ Nenhum dispositivo para verificar{self.ENDC}")
+            return False
+        
+        instagram_found = False
+        
+        for device_id in self.results['devices']:
+            try:
+                print(f"🔍 Verificando {device_id}...")
                 
-                # Tentar iniciar Instagram
                 result = subprocess.run([
-                    'adb', 'shell', 'am', 'start', '-n', 
-                    'com.instagram.android/com.instagram.android.activity.MainTabActivity'
+                    'adb', '-s', device_id, 'shell', 'pm', 'list', 'packages', 
+                    'com.instagram.android'
                 ], capture_output=True, text=True, timeout=10)
                 
-                if result.returncode == 0:
-                    print("✅ Instagram iniciado com sucesso")
-                    return True
+                if result.returncode == 0 and 'com.instagram.android' in result.stdout:
+                    print(f"{self.GREEN}   ✅ Instagram instalado{self.ENDC}")
+                    
+                    # Tentar obter versão
+                    version_result = subprocess.run([
+                        'adb', '-s', device_id, 'shell', 'dumpsys', 'package', 
+                        'com.instagram.android', '|', 'grep', 'versionName'
+                    ], capture_output=True, text=True, timeout=5)
+                    
+                    instagram_found = True
                 else:
-                    print("⚠️ Não foi possível iniciar o Instagram")
-                    return False
-            else:
-                print("❌ Instagram não está instalado no dispositivo")
-                print("   Instale o Instagram e faça login antes de continuar")
-                return False
-                
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            print("❌ Erro ao testar acesso ao Instagram")
-            return False
+                    print(f"{self.RED}   ❌ Instagram não instalado{self.ENDC}")
+                    
+            except Exception as e:
+                print(f"{self.YELLOW}   ⚠️ Erro na verificação: {e}{self.ENDC}")
+        
+        self.results['instagram'] = instagram_found
+        return instagram_found
     
-    def run_setup(self) -> bool:
-        """Executa setup completo"""
+    def calculate_overall_score(self):
+        """Calcula pontuação geral"""
+        score = 0
+        max_score = 100
+        
+        # Python (20 pontos)
+        if self.results['python']:
+            score += 20
+        
+        # Dependências (30 pontos)
+        deps_installed = sum(1 for installed in self.results['dependencies'].values() if installed)
+        deps_total = len(self.results['dependencies'])
+        if deps_total > 0:
+            score += int((deps_installed / deps_total) * 30)
+        
+        # Arquivos (25 pontos)
+        files_found = sum(1 for found in self.results['files'].values() if found)
+        files_total = len(self.results['files'])
+        if files_total > 0:
+            score += int((files_found / files_total) * 25)
+        
+        # ADB (15 pontos)
+        if self.results['adb']:
+            score += 15
+        
+        # Instagram (10 pontos)
+        if self.results['instagram']:
+            score += 10
+        
+        self.results['overall_score'] = score
+        return score
+    
+    def print_summary(self):
+        """Imprime resumo final"""
+        score = self.calculate_overall_score()
+        
+        print(f"\n{self.BOLD}📊 RESUMO FINAL{self.ENDC}")
+        print("=" * 50)
+        
+        # Determinar cor da pontuação
+        if score >= 80:
+            score_color = self.GREEN
+            status = "EXCELENTE 🎉"
+        elif score >= 60:
+            score_color = self.YELLOW  
+            status = "BOM ⚠️"
+        else:
+            score_color = self.RED
+            status = "PRECISA MELHORAR ❌"
+        
+        print(f"🎯 Pontuação geral: {score_color}{score}/100 - {status}{self.ENDC}")
+        
+        print(f"\n📋 Detalhes:")
+        print(f"   🐍 Python: {'✅' if self.results['python'] else '❌'}")
+        print(f"   📦 Dependências: {sum(1 for x in self.results['dependencies'].values() if x)}/{len(self.results['dependencies'])}")
+        print(f"   📁 Arquivos: {sum(1 for x in self.results['files'].values() if x)}/{len(self.results['files'])}")
+        print(f"   📱 ADB: {'✅' if self.results['adb'] else '❌'}")
+        print(f"   📱 Dispositivos: {len(self.results['devices'])}")
+        print(f"   📱 Instagram: {'✅' if self.results['instagram'] else '❌'}")
+        
+        # Recomendações
+        print(f"\n{self.BLUE}💡 RECOMENDAÇÕES:{self.ENDC}")
+        
+        if score >= 80:
+            print("🎯 Tudo pronto! Você pode iniciar o bot.")
+            print("   Execute: python quick_start.py")
+        else:
+            if not self.results['python']:
+                print("🐍 Atualize o Python para versão 3.8+")
+            
+            missing_deps = [dep for dep, installed in self.results['dependencies'].items() if not installed]
+            if missing_deps:
+                print(f"📦 Instale dependências: pip install {' '.join(missing_deps)}")
+            
+            missing_files = [file for file, found in self.results['files'].items() if not found]
+            if missing_files:
+                print(f"📁 Baixe arquivos faltando: {', '.join(missing_files)}")
+            
+            if not self.results['adb']:
+                print("📱 Instale ADB para controlar dispositivos Android")
+            
+            if not self.results['instagram']:
+                print("📱 Instale Instagram no dispositivo Android")
+        
+        # Salvar relatório
+        report_file = f"verification_report_{int(time.time())}.json"
+        with open(report_file, 'w') as f:
+            json.dump(self.results, f, indent=2)
+        
+        print(f"\n📄 Relatório salvo em: {report_file}")
+    
+    def run_verification(self):
+        """Executa verificação completa"""
         self.print_header()
         
-        # Lista de verificações
-        checks = [
-            ("Versão do Python", self.check_python_version),
-            ("Instalação do ADB", self.check_adb_installation),
-        ]
+        # Executar todas as verificações
+        self.check_python_version()
+        self.check_dependencies() 
+        self.check_project_files()
+        self.check_adb()
+        self.check_android_devices()
+        self.check_instagram()
         
-        # Executar verificações obrigatórias
-        for check_name, check_func in checks:
-            if not check_func():
-                print(f"\
+        # Mostrar resumo
+        self.print_summary()
+        
+        return self.results['overall_score'] >= 60
+
+def main():
+    """Função principal"""
+    import argparse
+    import time
+    
+    parser = argparse.ArgumentParser(description='Instagram Bot Installation Verifier')
+    parser.add_argument('--json', action='store_true', 
+                       help='Output em formato JSON')
+    parser.add_argument('--quiet', action='store_true',
+                       help='Modo silencioso')
+    
+    args = parser.parse_args()
+    
+    verifier = InstallationVerifier()
+    
+    if args.quiet:
+        # Modo silencioso - apenas verificar e retornar código de saída
+        verifier.check_python_version()
+        verifier.check_dependencies()
+        verifier.check_project_files()
+        verifier.check_adb()
+        verifier.check_android_devices() 
+        verifier.check_instagram()
+        
+        score = verifier.calculate_overall_score()
+        
+        if args.json:
+            print(json.dumps(verifier.results, indent=2))
+        
+        sys.exit(0 if score >= 60 else 1)
+    
+    else:
+        # Modo completo
+        success = verifier.run_verification()
+        sys.exit(0 if success else 1)
+
+if __name__ == "__main__":
+    main()

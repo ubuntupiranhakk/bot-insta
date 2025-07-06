@@ -12,7 +12,7 @@ from enum import Enum
 
 # Importar nossas classes
 from improved_db_schema import InstagramDatabase
-from instagram_automation import InstagramBot, BotMonitor
+from instagram_automation import InstagramBot
 
 class TaskStatus(Enum):
     PENDING = "pending"
@@ -41,6 +41,200 @@ class ScheduledTask:
             self.kwargs = {}
         if self.created_at is None:
             self.created_at = datetime.now()
+
+# Classe para monitoramento e relatórios
+class BotMonitor:
+    """Monitor do bot com relatórios e alertas"""
+    
+    def __init__(self, db_instance):
+        self.db = db_instance
+        self.logger = logging.getLogger(__name__)
+    
+    def generate_daily_report(self) -> Dict[str, any]:
+        """Gera relatório diário de atividades"""
+        try:
+            import sqlite3
+            conn = sqlite3.connect(self.db.db_path)
+            cursor = conn.cursor()
+            
+            report = {
+                'date': datetime.now().strftime('%Y-%m-%d'),
+                'follows': {},
+                'unfollows': {},
+                'follow_backs': {},
+                'errors': {},
+                'efficiency': {}
+            }
+            
+            # Follows hoje
+            cursor.execute('''
+                SELECT COUNT(*), AVG(julianday(performed_at) - julianday(scheduled_for)) * 24 * 60 as avg_delay_minutes
+                FROM actions 
+                WHERE action_type = 'follow' 
+                AND status = 'completed'
+                AND DATE(performed_at) = DATE('now')
+            ''')
+            follow_data = cursor.fetchone()
+            report['follows']['completed'] = follow_data[0] if follow_data[0] else 0
+            report['follows']['avg_delay_minutes'] = follow_data[1] if follow_data[1] else 0
+            
+            # Follows falharam hoje
+            cursor.execute('''
+                SELECT COUNT(*) FROM actions 
+                WHERE action_type = 'follow' 
+                AND status = 'failed'
+                AND DATE(performed_at) = DATE('now')
+            ''')
+            report['follows']['failed'] = cursor.fetchone()[0]
+            
+            # Unfollows hoje
+            cursor.execute('''
+                SELECT COUNT(*) FROM actions 
+                WHERE action_type = 'unfollow' 
+                AND status = 'completed'
+                AND DATE(performed_at) = DATE('now')
+            ''')
+            report['unfollows']['completed'] = cursor.fetchone()[0]
+            
+            # Follow-backs recebidos
+            cursor.execute('''
+                SELECT COUNT(*) FROM follow_backs 
+                WHERE followed_back = 1
+                AND DATE(checked_at) = DATE('now')
+            ''')
+            report['follow_backs']['received'] = cursor.fetchone()[0]
+            
+            # Taxa de follow-back
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_checked,
+                    SUM(CASE WHEN followed_back = 1 THEN 1 ELSE 0 END) as followed_back
+                FROM follow_backs 
+                WHERE followed_back IS NOT NULL
+                AND DATE(checked_at) = DATE('now')
+            ''')
+            fb_data = cursor.fetchone()
+            if fb_data[0] > 0:
+                report['follow_backs']['rate'] = (fb_data[1] / fb_data[0]) * 100
+            else:
+                report['follow_backs']['rate'] = 0
+            
+            # Erros por tipo
+            cursor.execute('''
+                SELECT error_message, COUNT(*) 
+                FROM actions 
+                WHERE status = 'failed'
+                AND DATE(performed_at) = DATE('now')
+                GROUP BY error_message
+            ''')
+            error_data = cursor.fetchall()
+            report['errors'] = dict(error_data) if error_data else {}
+            
+            # Eficiência geral
+            total_attempts = report['follows']['completed'] + report['follows']['failed']
+            if total_attempts > 0:
+                report['efficiency']['success_rate'] = (report['follows']['completed'] / total_attempts) * 100
+            else:
+                report['efficiency']['success_rate'] = 0
+            
+            conn.close()
+            return report
+            
+        except Exception as e:
+            self.logger.error(f"Error generating daily report: {e}")
+            return {}
+    
+    def check_bot_health(self) -> Dict[str, any]:
+        """Verifica a saúde do bot"""
+        health_report = {
+            'status': 'healthy',
+            'issues': [],
+            'recommendations': []
+        }
+        
+        try:
+            # Verificar taxa de erro
+            stats = self.db.get_statistics()
+            
+            # Se mais de 50% das ações falharam hoje
+            today_total = stats['follows_today'] + stats['unfollows_today']
+            if today_total > 0:
+                # Calcular falhas (seria necessário adicionar esse campo nas stats)
+                # Por enquanto assumimos que está OK
+                pass
+            
+            # Verificar se há ações pendentes há muito tempo
+            import sqlite3
+            conn = sqlite3.connect(self.db.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT COUNT(*) FROM actions 
+                WHERE status = 'pending'
+                AND scheduled_for < datetime('now', '-1 hour')
+            ''')
+            old_pending = cursor.fetchone()[0]
+            
+            if old_pending > 10:
+                health_report['status'] = 'warning'
+                health_report['issues'].append(f"{old_pending} ações pendentes há mais de 1 hora")
+                health_report['recommendations'].append("Verificar conectividade do dispositivo")
+            
+            # Verificar se o bot está seguindo muito rápido
+            cursor.execute('''
+                SELECT COUNT(*) FROM actions 
+                WHERE action_type = 'follow'
+                AND status = 'completed'
+                AND performed_at > datetime('now', '-1 hour')
+            ''')
+            recent_follows = cursor.fetchone()[0]
+            
+            if recent_follows > 20:  # Mais de 20 follows por hora pode ser suspeito
+                health_report['status'] = 'warning'
+                health_report['issues'].append(f"{recent_follows} follows na última hora")
+                health_report['recommendations'].append("Considerar aumentar delays entre ações")
+            
+            conn.close()
+            
+        except Exception as e:
+            health_report['status'] = 'error'
+            health_report['issues'].append(f"Erro ao verificar saúde: {str(e)}")
+        
+        return health_report
+    
+    def export_data(self, export_type: str = 'csv') -> Optional[str]:
+        """Exporta dados do bot"""
+        try:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            if export_type == 'csv':
+                import pandas as pd
+                import sqlite3
+                
+                conn = sqlite3.connect(self.db.db_path)
+                
+                # Exportar dados de followers e ações
+                query = '''
+                    SELECT 
+                        f.username, f.profile_link, f.created_at,
+                        a.action_type, a.status, a.performed_at,
+                        fb.followed_back, fb.checked_at
+                    FROM followers f
+                    LEFT JOIN actions a ON f.id = a.follower_id
+                    LEFT JOIN follow_backs fb ON f.id = fb.follower_id
+                    ORDER BY f.created_at DESC
+                '''
+                
+                df = pd.read_sql_query(query, conn)
+                filename = f"instagram_bot_export_{timestamp}.csv"
+                df.to_csv(filename, index=False)
+                
+                conn.close()
+                return filename
+                
+        except Exception as e:
+            self.logger.error(f"Error exporting data: {e}")
+            return None
 
 class BotScheduler:
     """Agendador principal do bot do Instagram"""

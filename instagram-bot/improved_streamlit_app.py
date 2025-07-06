@@ -185,42 +185,121 @@ if page == "Dashboard":
     with col1:
         st.subheader("Atividade Diária")
         
-        # Simular dados de atividade (em produção, viria do banco)
-        days = pd.date_range(start=datetime.now() - timedelta(days=7), end=datetime.now(), freq='D')
-        activity_data = pd.DataFrame({
-            'Data': days,
-            'Follows': [12, 15, 8, 20, 18, 25, stats['follows_today']],
-            'Unfollows': [2, 5, 3, 8, 7, 12, stats['unfollows_today']]
-        })
-        
-        fig = px.line(activity_data, x='Data', y=['Follows', 'Unfollows'], 
-                     title="Atividade dos Últimos 7 Dias")
-        st.plotly_chart(fig, use_container_width=True)
+        try:
+            # Obter dados reais de atividade do banco
+            import sqlite3
+            conn = sqlite3.connect(db.db_path)
+            cursor = conn.cursor()
+            
+            # Buscar atividade dos últimos 7 dias
+            cursor.execute('''
+                SELECT 
+                    DATE(performed_at) as date,
+                    SUM(CASE WHEN action_type = 'follow' AND status = 'completed' THEN 1 ELSE 0 END) as follows,
+                    SUM(CASE WHEN action_type = 'unfollow' AND status = 'completed' THEN 1 ELSE 0 END) as unfollows
+                FROM actions 
+                WHERE performed_at >= date('now', '-7 days')
+                GROUP BY DATE(performed_at)
+                ORDER BY date
+            ''')
+            
+            activity_results = cursor.fetchall()
+            conn.close()
+            
+            if activity_results:
+                # Dados reais do banco
+                activity_data = pd.DataFrame(activity_results, columns=['Data', 'Follows', 'Unfollows'])
+                activity_data['Data'] = pd.to_datetime(activity_data['Data'])
+            else:
+                # Dados de exemplo se não houver atividade
+                days = pd.date_range(start=datetime.now() - timedelta(days=6), end=datetime.now(), freq='D')
+                activity_data = pd.DataFrame({
+                    'Data': days,
+                    'Follows': [0] * len(days),
+                    'Unfollows': [0] * len(days)
+                })
+            
+            # Garantir que temos pelo menos 7 dias de dados
+            all_days = pd.date_range(start=datetime.now() - timedelta(days=6), end=datetime.now(), freq='D')
+            full_data = pd.DataFrame({'Data': all_days})
+            
+            # Merge com dados reais
+            activity_data = full_data.merge(activity_data, on='Data', how='left')
+            activity_data['Follows'] = activity_data['Follows'].fillna(0)
+            activity_data['Unfollows'] = activity_data['Unfollows'].fillna(0)
+            
+            if len(activity_data) > 0:
+                fig = px.line(activity_data, x='Data', y=['Follows', 'Unfollows'], 
+                             title="Atividade dos Últimos 7 Dias")
+                fig.update_layout(xaxis_title="Data", yaxis_title="Quantidade")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("📊 Nenhuma atividade registrada ainda. Execute algumas ações para ver o gráfico.")
+                
+        except Exception as e:
+            st.error(f"Erro ao carregar dados de atividade: {str(e)}")
+            
+            # Fallback: gráfico vazio
+            days = pd.date_range(start=datetime.now() - timedelta(days=6), end=datetime.now(), freq='D')
+            activity_data = pd.DataFrame({
+                'Data': days,
+                'Follows': [0] * len(days),
+                'Unfollows': [0] * len(days)
+            })
+            
+            fig = px.line(activity_data, x='Data', y=['Follows', 'Unfollows'], 
+                         title="Atividade dos Últimos 7 Dias (Sem dados)")
+            st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         st.subheader("Status das Ações")
         
-        # Dados do status das ações
-        import sqlite3
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT status, COUNT(*) as count
-            FROM actions
-            GROUP BY status
-        ''')
-        
-        status_data = cursor.fetchall()
-        conn.close()
-        
-        if status_data:
-            status_df = pd.DataFrame(status_data, columns=['Status', 'Count'])
-            fig = px.pie(status_df, values='Count', names='Status', 
-                        title="Distribuição de Status das Ações")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Nenhuma ação registrada ainda")
+        try:
+            # Dados do status das ações
+            import sqlite3
+            conn = sqlite3.connect(db.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT status, COUNT(*) as count
+                FROM actions
+                GROUP BY status
+            ''')
+            
+            status_data = cursor.fetchall()
+            conn.close()
+            
+            if status_data and len(status_data) > 0:
+                status_df = pd.DataFrame(status_data, columns=['Status', 'Count'])
+                
+                # Traduzir status para português
+                status_translation = {
+                    'completed': 'Concluído',
+                    'pending': 'Pendente', 
+                    'failed': 'Falhado',
+                    'cancelled': 'Cancelado'
+                }
+                
+                status_df['Status'] = status_df['Status'].map(status_translation).fillna(status_df['Status'])
+                
+                fig = px.pie(status_df, values='Count', names='Status', 
+                            title="Distribuição de Status das Ações")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("📊 Nenhuma ação registrada ainda")
+                
+                # Gráfico de exemplo vazio
+                sample_data = pd.DataFrame({
+                    'Status': ['Aguardando ações'],
+                    'Count': [1]
+                })
+                fig = px.pie(sample_data, values='Count', names='Status', 
+                            title="Status das Ações (Nenhuma ação executada)")
+                st.plotly_chart(fig, use_container_width=True)
+                
+        except Exception as e:
+            st.error(f"Erro ao carregar dados de status: {str(e)}")
+            st.info("📊 Dados de status não disponíveis")
 
 elif page == "Importar Dados":
     st.title("📂 Importar Dados de Seguidores")
